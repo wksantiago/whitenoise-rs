@@ -1120,12 +1120,17 @@ impl Whitenoise {
             tracing::debug!(target: "whitenoise::accounts::background_publish_account_follow_list", "Background task: Publishing follow list for account: {:?}", account_clone.pubkey);
 
             let relays_urls = Relay::urls(&relays);
-            nostr
+            match nostr
                 .publish_follow_list_with_signer(&follows_pubkeys, &relays_urls, signer)
-                .await?;
-
-            tracing::debug!(target: "whitenoise::accounts::background_publish_account_follow_list", "Successfully published follow list for account: {:?}", account_clone.pubkey);
-            Ok::<(), WhitenoiseError>(())
+                .await
+            {
+                Ok(_) => {
+                    tracing::debug!(target: "whitenoise::accounts::background_publish_account_follow_list", "Successfully published follow list for account: {:?}", account_clone.pubkey);
+                }
+                Err(e) => {
+                    tracing::error!(target: "whitenoise::accounts::background_publish_account_follow_list", "Failed to publish follow list for account {:?}: {}", account_clone.pubkey, e);
+                }
+            }
         });
         Ok(())
     }
@@ -1289,6 +1294,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(feature = "insecure-local-signer")]
     async fn test_load_accounts() {
         let (whitenoise, _data_temp, _logs_temp) = create_mock_whitenoise().await;
 
@@ -1307,6 +1313,20 @@ mod tests {
         // Store keys in secrets store (required for background fetch)
         whitenoise.secrets_store.store_private_key(&keys1).unwrap();
         whitenoise.secrets_store.store_private_key(&keys2).unwrap();
+        whitenoise
+            .secrets_store
+            .store_signer_kind(
+                &account1.pubkey,
+                &crate::whitenoise::signers::SignerKind::LocalInsecure,
+            )
+            .unwrap();
+        whitenoise
+            .secrets_store
+            .store_signer_kind(
+                &account2.pubkey,
+                &crate::whitenoise::signers::SignerKind::LocalInsecure,
+            )
+            .unwrap();
 
         // Load accounts from database
         let loaded_accounts = Account::all(&whitenoise.database).await.unwrap();
@@ -1669,12 +1689,20 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(feature = "insecure-local-signer")]
     async fn test_update_metadata() {
         let (whitenoise, _data_temp, _logs_temp) = create_mock_whitenoise().await;
         let (account, keys) = create_test_account(&whitenoise).await;
         account.save(&whitenoise.database).await.unwrap();
 
         whitenoise.secrets_store.store_private_key(&keys).unwrap();
+        whitenoise
+            .secrets_store
+            .store_signer_kind(
+                &account.pubkey,
+                &crate::whitenoise::signers::SignerKind::LocalInsecure,
+            )
+            .unwrap();
 
         let default_relays = whitenoise.load_default_relays().await.unwrap();
         whitenoise
