@@ -24,6 +24,18 @@ use nostr_sdk::prelude::*;
 
 use super::error::SignerError;
 
+/// Simple error wrapper for SignerError::backend which requires std::error::Error.
+#[derive(Debug)]
+struct AmberSignerError(String);
+
+impl std::fmt::Display for AmberSignerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for AmberSignerError {}
+
 /// Default Amber package name.
 pub const AMBER_PACKAGE: &str = "com.greenart7c3.nostrsigner";
 
@@ -152,7 +164,11 @@ impl AmberJniContext {
     }
 
     /// Parse a URI string into an Android Uri object.
-    fn parse_uri(&self, env: &mut JNIEnv, uri_string: &str) -> Result<JObject<'_>, SignerError> {
+    fn parse_uri<'a>(
+        &self,
+        env: &mut JNIEnv<'a>,
+        uri_string: &str,
+    ) -> Result<JObject<'a>, SignerError> {
         let uri_class = env
             .find_class("android/net/Uri")
             .map_err(|e| SignerError::JniError(format!("Failed to find Uri class: {}", e)))?;
@@ -173,11 +189,11 @@ impl AmberJniContext {
     }
 
     /// Build a String[] projection array from parameters.
-    fn build_projection(
+    fn build_projection<'a>(
         &self,
-        env: &mut JNIEnv,
+        env: &mut JNIEnv<'a>,
         params: &[(&str, &str)],
-    ) -> Result<JObject<'_>, SignerError> {
+    ) -> Result<JObject<'a>, SignerError> {
         let string_class = env
             .find_class("java/lang/String")
             .map_err(|e| SignerError::JniError(format!("Failed to find String class: {}", e)))?;
@@ -353,7 +369,7 @@ impl AmberSigner {
 
 impl NostrSigner for AmberSigner {
     fn backend(&self) -> SignerBackend<'_> {
-        SignerBackend::Custom("amber-nip55".to_string())
+        SignerBackend::Custom("amber-nip55".into())
     }
 
     fn get_public_key(&self) -> BoxedFuture<'_, Result<PublicKey, nostr_sdk::signer::SignerError>> {
@@ -366,7 +382,7 @@ impl NostrSigner for AmberSigner {
     ) -> BoxedFuture<'_, Result<Event, nostr_sdk::signer::SignerError>> {
         Box::pin(async move {
             let event_json = serde_json::to_string(&unsigned)
-                .map_err(|e| nostr_sdk::signer::SignerError::backend(e.to_string()))?;
+                .map_err(|e| nostr_sdk::signer::SignerError::backend(AmberSignerError(e.to_string())))?;
 
             let result = self
                 .query(
@@ -377,21 +393,21 @@ impl NostrSigner for AmberSigner {
                     ],
                 )
                 .await
-                .map_err(|e| nostr_sdk::signer::SignerError::backend(e.to_string()))?;
+                .map_err(|e| nostr_sdk::signer::SignerError::backend(AmberSignerError(e.to_string())))?;
 
             if result.rejected {
                 return Err(nostr_sdk::signer::SignerError::backend(
-                    "User rejected signing request",
+                    AmberSignerError("User rejected signing request".to_string()),
                 ));
             }
 
             // NIP-55 returns signed event in "event" column
             let event_str = result.event.ok_or_else(|| {
-                nostr_sdk::signer::SignerError::backend("No signed event returned from Amber")
+                nostr_sdk::signer::SignerError::backend(AmberSignerError("No signed event returned from Amber".to_string()))
             })?;
 
             serde_json::from_str(&event_str)
-                .map_err(|e| nostr_sdk::signer::SignerError::backend(e.to_string()))
+                .map_err(|e| nostr_sdk::signer::SignerError::backend(AmberSignerError(e.to_string())))
         })
     }
 
@@ -411,16 +427,16 @@ impl NostrSigner for AmberSigner {
                     ],
                 )
                 .await
-                .map_err(|e| nostr_sdk::signer::SignerError::backend(e.to_string()))?;
+                .map_err(|e| nostr_sdk::signer::SignerError::backend(AmberSignerError(e.to_string())))?;
 
             if result.rejected {
                 return Err(nostr_sdk::signer::SignerError::backend(
-                    "User rejected encryption request",
+                    AmberSignerError("User rejected encryption request".to_string()),
                 ));
             }
 
             result.result.ok_or_else(|| {
-                nostr_sdk::signer::SignerError::backend("No encrypted content returned from Amber")
+                nostr_sdk::signer::SignerError::backend(AmberSignerError("No encrypted content returned from Amber".to_string()))
             })
         })
     }
@@ -441,16 +457,16 @@ impl NostrSigner for AmberSigner {
                     ],
                 )
                 .await
-                .map_err(|e| nostr_sdk::signer::SignerError::backend(e.to_string()))?;
+                .map_err(|e| nostr_sdk::signer::SignerError::backend(AmberSignerError(e.to_string())))?;
 
             if result.rejected {
                 return Err(nostr_sdk::signer::SignerError::backend(
-                    "User rejected decryption request",
+                    AmberSignerError("User rejected decryption request".to_string()),
                 ));
             }
 
             result.result.ok_or_else(|| {
-                nostr_sdk::signer::SignerError::backend("No decrypted content returned from Amber")
+                nostr_sdk::signer::SignerError::backend(AmberSignerError("No decrypted content returned from Amber".to_string()))
             })
         })
     }
@@ -471,16 +487,16 @@ impl NostrSigner for AmberSigner {
                     ],
                 )
                 .await
-                .map_err(|e| nostr_sdk::signer::SignerError::backend(e.to_string()))?;
+                .map_err(|e| nostr_sdk::signer::SignerError::backend(AmberSignerError(e.to_string())))?;
 
             if result.rejected {
                 return Err(nostr_sdk::signer::SignerError::backend(
-                    "User rejected encryption request",
+                    AmberSignerError("User rejected encryption request".to_string()),
                 ));
             }
 
             result.result.ok_or_else(|| {
-                nostr_sdk::signer::SignerError::backend("No encrypted content returned from Amber")
+                nostr_sdk::signer::SignerError::backend(AmberSignerError("No encrypted content returned from Amber".to_string()))
             })
         })
     }
@@ -501,16 +517,16 @@ impl NostrSigner for AmberSigner {
                     ],
                 )
                 .await
-                .map_err(|e| nostr_sdk::signer::SignerError::backend(e.to_string()))?;
+                .map_err(|e| nostr_sdk::signer::SignerError::backend(AmberSignerError(e.to_string())))?;
 
             if result.rejected {
                 return Err(nostr_sdk::signer::SignerError::backend(
-                    "User rejected decryption request",
+                    AmberSignerError("User rejected decryption request".to_string()),
                 ));
             }
 
             result.result.ok_or_else(|| {
-                nostr_sdk::signer::SignerError::backend("No decrypted content returned from Amber")
+                nostr_sdk::signer::SignerError::backend(AmberSignerError("No decrypted content returned from Amber".to_string()))
             })
         })
     }

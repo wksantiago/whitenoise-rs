@@ -168,10 +168,19 @@ impl Whitenoise {
         env: &mut jni::JNIEnv,
         content_resolver: &jni::objects::JObject,
     ) -> std::result::Result<(), signers::SignerError> {
-        let ctx = signers::amber::AmberJniContext::new(env, content_resolver)?;
+        // SAFETY: The caller guarantees env and content_resolver are valid JNI objects
+        let ctx = unsafe { signers::amber::AmberJniContext::new(env, content_resolver)? };
         signers::android_context::set(ctx).map_err(|_| {
             signers::SignerError::JniError("Android context already initialized".to_string())
         })
+    }
+
+    /// Check if the Android context has been initialized.
+    ///
+    /// Returns `true` if `init_android_context` was called successfully.
+    #[cfg(target_os = "android")]
+    pub fn is_android_context_initialized() -> bool {
+        signers::android_context::get().is_some()
     }
 
     // ========================================================================
